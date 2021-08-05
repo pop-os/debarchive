@@ -97,7 +97,7 @@ impl<'a> Archive<'a> {
         let mut archive = ar::Archive::new(File::open(self.path)?);
         let inner_tar_archive = archive.jump_to_entry(id as usize)?;
         let mut reader: Box<dyn io::Read> = match codec {
-            Codec::Zstd => Box::new(GzDecoder::new(inner_tar_archive)?),
+            Codec::Zstd => Box::new(zstd::Decoder::new(inner_tar_archive)?),
             Codec::Xz => Box::new(XzDecoder::new(inner_tar_archive)),
             Codec::Gz => Box::new(GzDecoder::new(inner_tar_archive)?),
         };

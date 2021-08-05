@@ -1,6 +1,6 @@
 [package]
 name = "debarchive"
-version = "0.2.0"
+version = "0.2.1"
 description = "Debian archive reader / extractor"
 repository = "https://github.com/pop-os/debarchive"
 license = "MIT"
