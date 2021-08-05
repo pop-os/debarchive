@@ -24,12 +24,14 @@ impl<'a> Archive<'a> {
         let mut entry_id = 0;
 
         while let Some(entry_result) = archive.next_entry() {
-            if let Ok(mut entry) = entry_result {
+            if let Ok(entry) = entry_result {
                 match entry.header().identifier() {
                     b"data.tar.xz" => data = Some((entry_id, Codec::Xz)),
                     b"data.tar.gz" => data = Some((entry_id, Codec::Gz)),
+                    b"data.tar.zst" => data = Some((entry_id, Codec::Zstd)),
                     b"control.tar.xz" => control = Some((entry_id, Codec::Xz)),
                     b"control.tar.gz" => control = Some((entry_id, Codec::Gz)),
+                    b"control.tar.zst" => control = Some((entry_id, Codec::Zstd)),
                     _ => {
                         entry_id += 1;
                         continue
@@ -56,7 +58,7 @@ impl<'a> Archive<'a> {
     }
 
     /// Enables the caller to process entries from the inner control archive.
-    pub fn control<F: FnMut(&mut tar::Entry<&mut io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
+    pub fn control<F: FnMut(&mut tar::Entry<&mut dyn io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
         self.inner_control(action).map_err(|why| io::Error::new(
             io::ErrorKind::Other,
             format!("error reading control archive within {}: {}", self.path.display(), why)
@@ -77,7 +79,7 @@ impl<'a> Archive<'a> {
     }
 
     /// Enables the caller to process entries from the inner data archive.
-    pub fn data<F: FnMut(&mut tar::Entry<&mut io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
+    pub fn data<F: FnMut(&mut tar::Entry<&mut dyn io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
         self.inner_data(action).map_err(|why| io::Error::new(
             io::ErrorKind::Other,
             format!("error reading data archive within {}: {}", self.path.display(), why)
@@ -90,19 +92,20 @@ impl<'a> Archive<'a> {
     }
 
     fn open_archive<F, T>(&self, id: u8, codec: Codec, mut func: F) -> io::Result<T>
-        where F: FnMut(&mut io::Read) -> T,
+        where F: FnMut(&mut dyn io::Read) -> T,
     {
         let mut archive = ar::Archive::new(File::open(self.path)?);
         let inner_tar_archive = archive.jump_to_entry(id as usize)?;
-        let mut reader: Box<io::Read> = match codec {
+        let mut reader: Box<dyn io::Read> = match codec {
+            Codec::Zstd => Box::new(GzDecoder::new(inner_tar_archive)?),
             Codec::Xz => Box::new(XzDecoder::new(inner_tar_archive)),
-            Codec::Gz => Box::new(GzDecoder::new(inner_tar_archive)?)
+            Codec::Gz => Box::new(GzDecoder::new(inner_tar_archive)?),
         };
 
         Ok(func(reader.as_mut()))
     }
 
-    fn iter_entries<F: FnMut(&mut tar::Entry<&mut io::Read>) -> io::Result<()>>(&self, mut action: F, id: u8, codec: Codec) -> io::Result<()> {
+    fn iter_entries<F: FnMut(&mut tar::Entry<&mut dyn io::Read>) -> io::Result<()>>(&self, mut action: F, id: u8, codec: Codec) -> io::Result<()> {
         self.open_archive(id, codec, |reader| {
             for entry in tar::Archive::new(reader).entries()? {
                 let mut entry = entry?;
@@ -117,11 +120,11 @@ impl<'a> Archive<'a> {
         })?
     }
 
-    fn inner_data<F: FnMut(&mut tar::Entry<&mut io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
+    fn inner_data<F: FnMut(&mut tar::Entry<&mut dyn io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
         self.iter_entries(action, self.data.0, self.data.1)
     }
 
-    fn inner_control<F: FnMut(&mut tar::Entry<&mut io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
+    fn inner_control<F: FnMut(&mut tar::Entry<&mut dyn io::Read>) -> io::Result<()>>(&self, action: F) -> io::Result<()> {
         self.iter_entries(action, self.control.0, self.control.1)
     }
 
@@ -139,7 +142,7 @@ impl<'a> Archive<'a> {
         self.open_archive(id, codec, |reader| {
             let mut control_data = BTreeMap::new();
 
-            for mut entry in tar::Archive::new(reader).entries()? {
+            for entry in tar::Archive::new(reader).entries()? {
                 let mut entry = entry?;
                 let path = entry.path()?.to_path_buf();
 
@@ -191,4 +194,5 @@ impl<'a> Archive<'a> {
 enum Codec {
     Xz,
     Gz,
+    Zstd
 }

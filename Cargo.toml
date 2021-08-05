@@ -1,6 +1,6 @@
 [package]
 name = "debarchive"
-version = "0.1.0"
+version = "0.2.0"
 description = "Debian archive reader / extractor"
 repository = "https://github.com/pop-os/debarchive"
 license = "MIT"
@@ -8,12 +8,14 @@ authors = ["Michael Aaron Murphy <mmstickman@gmail.com>"]
 readme = "README.md"
 keywords = ["debian", "archive", "apt"]
 categories = ["os::unix-apis"]
+edition = "2018"
 
 [badges]
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
-ar = "0.6.0"
-tar = "0.4.17"
-xz2 = "0.1.5"
-libflate = "0.1.18"
+ar = "0.8"
+tar = "0.4"
+xz2 = "0.1"
+libflate = "1.0"
+zstd = "0.9"
